@@ -15,8 +15,7 @@
 package cmd
 
 import (
-	"fmt"
-
+	"github.com/kgantsov/goben/pkg/goben"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +36,9 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Println(">>>>", url, connections, requests, err)
+
+		gen, _ := goben.NewGoben(int(requests), int(connections), url)
+		gen.Run()
 
 		return nil
 	},
