@@ -23,7 +23,8 @@ type goben struct {
 	jobs   sync.WaitGroup
 	done   chan bool
 
-	RPSes []uint64
+	RPSes     []uint64
+	latencies []float64
 
 	lock     sync.Mutex
 	requests int64
@@ -38,6 +39,7 @@ func NewGoben(numReqs int, numConns int, url string) (*goben, error) {
 	b.url = url
 	b.done = make(chan bool)
 	b.RPSes = make([]uint64, 0)
+	b.latencies = make([]float64, 0)
 	b.jobs.Add(b.requestsNumber)
 	b.client = &fasthttp.Client{
 		MaxConnsPerHost: b.connectionsNumber,
@@ -48,6 +50,8 @@ func NewGoben(numReqs int, numConns int, url string) (*goben, error) {
 }
 
 func (b *goben) makeRequest() {
+	start := time.Now()
+
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
 
@@ -60,6 +64,7 @@ func (b *goben) makeRequest() {
 	resp.WriteTo(ioutil.Discard)
 
 	atomic.AddInt64(&b.requests, 1)
+	b.latencies = append(b.latencies, float64(time.Since(start).Nanoseconds())/1000)
 
 	fasthttp.ReleaseRequest(req)
 	fasthttp.ReleaseResponse(resp)
@@ -95,7 +100,6 @@ func (b *goben) calculateRPS() {
 	if rps >= 1 {
 		b.RPSes = append(b.RPSes, rps)
 	}
-
 }
 
 func (b *goben) printRPSResults() {
@@ -117,8 +121,36 @@ func (b *goben) printRPSResults() {
 			}
 		}
 	}
-	fmt.Println("Statistics        Avg      Min         Max")
-	fmt.Println(fmt.Sprintf("  Reqs/sec     %.2f   %d       %d", float64(sum/uint64(count)), min, max))
+	fmt.Printf("%12v %12v %12v %12v\n", "Statistics", "Avg", "Min", "Max")
+	fmt.Printf("%12v %12v %12v %12v\n", "Reqs/sec", float64(sum/uint64(count)), min, max)
+}
+
+func (b *goben) printLatenciesResults() {
+	count := len(b.latencies)
+	sum := float64(0)
+	max := float64(0)
+	min := float64(0)
+	for index, val := range b.latencies {
+		sum += val
+		if index == 0 {
+			min = val
+			max = val
+		} else {
+			if val < min {
+				min = val
+			}
+			if val > max {
+				max = val
+			}
+		}
+	}
+	fmt.Printf(
+		"%12v %12v %12v %12v\n",
+		"Latencies",
+		fmt.Sprintf("%.2fms", float64(sum/float64(count))/1000),
+		fmt.Sprintf("%.2fms", min/1000),
+		fmt.Sprintf("%.2fms", max/1000),
+	)
 }
 
 func (b *goben) getJob() bool {
@@ -149,4 +181,5 @@ func (b *goben) Run() {
 	<-b.done
 
 	b.printRPSResults()
+	b.printLatenciesResults()
 }
