@@ -23,12 +23,14 @@ type goben struct {
 	jobs   sync.WaitGroup
 	done   chan bool
 
-	RPSes     []uint64
-	latencies []float64
+	RPSes       []uint64
+	throughputs []float64
+	latencies   []float64
 
-	lock     sync.Mutex
-	requests int64
-	start    time.Time
+	lock         sync.Mutex
+	requests     int64
+	start        time.Time
+	bytesWritten int64
 }
 
 func NewGoben(numReqs int, numConns int, url string) (*goben, error) {
@@ -39,6 +41,7 @@ func NewGoben(numReqs int, numConns int, url string) (*goben, error) {
 	b.url = url
 	b.done = make(chan bool)
 	b.RPSes = make([]uint64, 0)
+	b.throughputs = make([]float64, 0)
 	b.latencies = make([]float64, 0)
 	b.jobs.Add(b.requestsNumber)
 	b.client = &fasthttp.Client{
@@ -61,10 +64,11 @@ func (b *goben) makeRequest() {
 	err := b.client.DoTimeout(req, resp, b.timeout)
 	if err != nil {
 	}
-	resp.WriteTo(ioutil.Discard)
+	bytesWritten, _ := resp.WriteTo(ioutil.Discard)
 
 	atomic.AddInt64(&b.requests, 1)
 	b.latencies = append(b.latencies, float64(time.Since(start).Nanoseconds())/1000)
+	atomic.AddInt64(&b.bytesWritten, bytesWritten)
 
 	fasthttp.ReleaseRequest(req)
 	fasthttp.ReleaseResponse(resp)
@@ -91,14 +95,21 @@ func (b *goben) calculateRPS() {
 	duration := time.Since(b.start)
 	requests := b.requests
 	b.requests = 0
+	bytesWritten := b.bytesWritten
+	b.bytesWritten = 0
 	b.start = time.Now()
 
 	b.lock.Unlock()
 
-	rps := uint64(float64(requests) / duration.Seconds())
+	seconds := duration.Seconds()
+	rps := uint64(float64(requests) / seconds)
+	throughput := float64(bytesWritten) / seconds
 
 	if rps >= 1 {
 		b.RPSes = append(b.RPSes, rps)
+	}
+	if throughput >= 1 {
+		b.throughputs = append(b.throughputs, throughput)
 	}
 }
 
@@ -123,6 +134,34 @@ func (b *goben) printRPSResults() {
 	}
 	fmt.Printf("%12v %12v %12v %12v\n", "Statistics", "Avg", "Min", "Max")
 	fmt.Printf("%12v %12v %12v %12v\n", "Reqs/sec", float64(sum/uint64(count)), min, max)
+}
+
+func (b *goben) printThroughputsResults() {
+	count := len(b.throughputs)
+	sum := float64(0)
+	max := float64(0)
+	min := float64(0)
+	for index, val := range b.throughputs {
+		sum += val
+		if index == 0 {
+			min = val
+			max = val
+		} else {
+			if val < min {
+				min = val
+			}
+			if val > max {
+				max = val
+			}
+		}
+	}
+	fmt.Printf(
+		"%12v %12v %12v %12v\n",
+		"Throughputs",
+		fmt.Sprintf("%.2fMB/s", float64(float64(sum)/float64(count))/1024/1204),
+		fmt.Sprintf("%.2fMB/s", min/1024/1204),
+		fmt.Sprintf("%.2fMB/s", max/1024/1204),
+	)
 }
 
 func (b *goben) printLatenciesResults() {
@@ -182,4 +221,5 @@ func (b *goben) Run() {
 
 	b.printRPSResults()
 	b.printLatenciesResults()
+	b.printThroughputsResults()
 }
