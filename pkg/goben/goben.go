@@ -62,13 +62,14 @@ func (b *goben) makeRequest() {
 	req.SetRequestURI(b.url)
 
 	err := b.client.DoTimeout(req, resp, b.timeout)
-	if err != nil {
-	}
-	bytesWritten, _ := resp.WriteTo(ioutil.Discard)
 
-	atomic.AddInt64(&b.requests, 1)
-	b.latencies = append(b.latencies, float64(time.Since(start).Nanoseconds())/1000)
-	atomic.AddInt64(&b.bytesWritten, bytesWritten)
+	if err == nil && resp.StatusCode() == 200 {
+		bytesWritten, _ := resp.WriteTo(ioutil.Discard)
+
+		atomic.AddInt64(&b.requests, 1)
+		b.latencies = append(b.latencies, float64(time.Since(start).Nanoseconds())/1000)
+		atomic.AddInt64(&b.bytesWritten, bytesWritten)
+	}
 
 	fasthttp.ReleaseRequest(req)
 	fasthttp.ReleaseResponse(resp)
