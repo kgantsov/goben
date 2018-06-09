@@ -47,7 +47,7 @@ func NewGoben(numReqs int, numConns int, url string) (*goben, error) {
 	b.client = &fasthttp.Client{
 		MaxConnsPerHost: b.connectionsNumber,
 	}
-	b.timeout = 2 * time.Second
+	b.timeout = 10 * time.Second
 
 	return b, nil
 }
