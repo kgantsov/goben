@@ -134,7 +134,11 @@ func (b *goben) printRPSResults() {
 		}
 	}
 	fmt.Printf("%12v %12v %12v %12v\n", "Statistics", "Avg", "Min", "Max")
-	fmt.Printf("%12v %12v %12v %12v\n", "Reqs/sec", float64(sum/uint64(count)), min, max)
+	if count > 0 {
+		fmt.Printf("%12v %12v %12v %12v\n", "Reqs/sec", float64(sum/uint64(count)), min, max)
+	} else {
+		fmt.Printf("%12v %12v %12v %12v\n", "Reqs/sec", float64(0), min, max)
+	}
 }
 
 func (b *goben) printThroughputsResults() {
